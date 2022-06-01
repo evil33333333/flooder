@@ -1,16 +1,16 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Flooder
 {
     internal class Program
-    {   
+    {
         public static int attempts;
         public static List<Thread> threads = new List<Thread>();
 
@@ -25,6 +25,7 @@ namespace Flooder
 
         static void Main()
         {
+            Console.Title = "[+] Flooder";
             WorkerData workerData = new WorkerData
             {
                 text = System.IO.File.ReadAllText("message.txt")
@@ -32,13 +33,12 @@ namespace Flooder
 
             while (String.IsNullOrEmpty(workerData.cookie))
             {
-                Program.Log("[!] Status: Not logged in.", ConsoleColor.DarkRed, true);
-
                 Console.Clear();
-                Console.Write("[+] Username: "); 
+                Program.Log("[!] Status: Not logged in.", ConsoleColor.DarkRed, true);
+                Console.Write("[+] Username: ");
                 String username = Console.ReadLine();
                 Console.Write("[+] Password: ");
-                String password = Console.ReadLine();
+                String password = Program.ReadPassword(mask: '*');
                 workerData.cookie = Login(username, password);
             }
 
@@ -57,17 +57,23 @@ namespace Flooder
             Program.StartWorkers(workerData);
             Task.Factory.StartNew(() =>
             {
-                foreach (Thread _t in threads) 
-                { 
-                    _t.Join(); 
+                foreach (Thread _t in threads)
+                {
+                    _t.Join();
                 }
-            }); 
-            new Thread(() => 
-            { 
-                while (true) 
-                { 
-                    Console.Write($"[!] Sent {attempts} messages to thread_id \"{workerData.thread_id}\"!\r"); 
-                } 
+            });
+            new Thread(() =>
+            {
+                while (true)
+                {
+                    foreach (String spinner in new string[] {"[\\]", "[|]", "[/]", "[-]" })
+                    {
+                        Console.Write($"{spinner} Sent {attempts} messages to thread_id \"{workerData.thread_id}\"!\r");
+                        Console.Title = $"[Flooder] {spinner} Sent {attempts} messages to thread_id \"{workerData.thread_id}\"!\r";
+                        Thread.Sleep(TimeSpan.FromMilliseconds(50));
+                    }
+                    Thread.Sleep(TimeSpan.FromMilliseconds(150));
+                }
             }).Start();
             Console.ReadKey();
 
@@ -139,11 +145,49 @@ namespace Flooder
             Console.ForegroundColor = ConsoleColor.White;
         }
 
+        public static string ReadPassword(char mask)
+        {
+            const int ENTER = 13, BACKSP = 8, CTRLBACKSP = 127;
+            int[] FILTERED = { 0, 27, 9, 10 };
+
+            var pass = new Stack<char>();
+            char chr = (char)0;
+            while ((chr = Console.ReadKey(true).KeyChar) != ENTER)
+            {
+                if (chr == BACKSP)
+                {
+                    if (pass.Count > 0)
+                    {
+                        Console.Write("\b \b");
+                        pass.Pop();
+                    }
+                }
+                else if (chr == CTRLBACKSP)
+                {
+                    while (pass.Count > 0)
+                    {
+                        Console.Write("\b \b");
+                        pass.Pop();
+                    }
+                }
+                else if (FILTERED.Count(x => chr == x) > 0) { }
+                else
+                {
+                    pass.Push((char)chr);
+                    Console.Write(mask);
+                }
+            }
+
+            Console.WriteLine();
+            return new string(pass.Reverse().ToArray());
+        }
+
         public static void StartWorkers(WorkerData workerData)
         {
             for (int i = 0; i < workerData.thread_count; i++)
             {
-                Thread thread = new Thread(() => {
+                Thread thread = new Thread(() =>
+                {
                     while (true)
                     {
                         if (!SendMessage(workerData.cookie, workerData.thread_id, workerData.text))
@@ -151,6 +195,7 @@ namespace Flooder
                             Program.Log("[!] Rate limited!", ConsoleColor.DarkRed, true);
                             Thread.Sleep(TimeSpan.FromMinutes(5));
                         }
+                        attempts++;
                     }
                 });
                 threads.Add(thread);
